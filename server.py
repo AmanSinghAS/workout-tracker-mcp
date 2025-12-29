@@ -1,12 +1,12 @@
-from mcp.server.fastmcp import FastMCP
+from fastmcp import FastMCP
+import random
 
-# Initialize FastMCP server
-mcp = FastMCP("workout-tracker-mcp")
+mcp = FastMCP("Demo Server")
 
-@mcp.tool()
-def hello_world() -> str:
-    """Returns a hello world greeting."""
-    return "Hello, World!"
+@mcp.tool
+def roll_dice(sides: int = 6) -> int:
+    """Roll a dice with the specified number of sides."""
+    return random.randint(1, sides)
 
 if __name__ == "__main__":
-    mcp.run()
+    mcp.run(transport="http", port=8000)
