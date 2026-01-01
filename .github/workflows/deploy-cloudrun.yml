@@ -60,4 +60,4 @@ jobs:
             --platform managed \
             --allow-unauthenticated \
             --add-cloudsql-instances ${{ env.PROJECT_ID }}:${{ env.REGION }}:${{ env.CLOUD_SQL_INSTANCE }} \
-            --set-env-vars "DATABASE_URL=${DATABASE_URL},PORT=8080"
+            --set-env-vars "DATABASE_URL=${DATABASE_URL}"
