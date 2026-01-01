@@ -36,3 +36,10 @@ def test_reps_must_be_positive():
     payload["exercises"][0]["sets"][0]["reps"] = 0
     with pytest.raises(ValueError):
         validate_payload(payload)
+
+
+def test_exercises_cannot_be_empty():
+    payload = base_payload()
+    payload["exercises"] = []
+    with pytest.raises(ValueError):
+        validate_payload(payload)

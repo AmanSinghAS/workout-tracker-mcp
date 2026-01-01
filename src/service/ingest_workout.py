@@ -53,8 +53,11 @@ def _resolve_exercise_id(session: Session, user_id: uuid.UUID, exercise: Exercis
     return new_exercise.id
 
 
-def ingest_workout(session: Session, payload: Dict) -> Dict:
-    data: WorkoutIngestPayload = validate_payload(payload)
+def ingest_workout(session: Session, payload: Dict | WorkoutIngestPayload) -> Dict:
+    if isinstance(payload, WorkoutIngestPayload):
+        data = payload
+    else:
+        data = validate_payload(payload)
 
     written_workout_exercises = 0
     written_sets = 0
