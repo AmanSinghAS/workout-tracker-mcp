@@ -43,11 +43,15 @@ jobs:
       - name: Run database migrations
         env:
           DATABASE_URL: postgresql+psycopg://${{ env.DB_USER }}:${{ secrets.DB_PASSWORD }}@127.0.0.1:5432/${{ env.DB_NAME }}
+          PGPASSWORD: ${{ secrets.DB_PASSWORD }}
         run: |
           curl -o cloud-sql-proxy https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.11.4/cloud-sql-proxy.linux.amd64
           chmod +x cloud-sql-proxy
           ./cloud-sql-proxy ${{ env.PROJECT_ID }}:${{ env.REGION }}:${{ env.CLOUD_SQL_INSTANCE }} &
           sleep 2
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+          psql -h 127.0.0.1 -U ${{ env.DB_USER }} -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='${{ env.DB_NAME }}'" | grep -q 1 ||             psql -h 127.0.0.1 -U ${{ env.DB_USER }} -d postgres -c "CREATE DATABASE ${{ env.DB_NAME }}"
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
           python -m alembic upgrade head
