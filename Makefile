@@ -1,3 +1,4 @@
+SHELL := /bin/bash
 COMPOSE ?= docker compose
 DOCKER ?= docker
 POSTGRES_USER ?= postgres
