@@ -50,6 +50,8 @@ jobs:
         run: docker push "$IMAGE_URI"
 
       - name: Deploy to Cloud Run
+        env:
+          DATABASE_URL: postgresql+psycopg://${{ env.DB_USER }}:${{ secrets.DB_PASSWORD }}@/${{ env.DB_NAME }}?host=/cloudsql/${{ env.PROJECT_ID }}:${{ env.REGION }}:${{ env.CLOUD_SQL_INSTANCE }}
         run: |
           gcloud run deploy ${{ env.SERVICE_NAME }} \
             --image "$IMAGE_URI" \
@@ -58,5 +60,4 @@ jobs:
             --platform managed \
             --allow-unauthenticated \
             --add-cloudsql-instances ${{ env.PROJECT_ID }}:${{ env.REGION }}:${{ env.CLOUD_SQL_INSTANCE }} \
-            --set-env-vars DATABASE_URL=postgresql+psycopg://${{ env.DB_USER }}:${{ secrets.DB_PASSWORD }}@/${{ env.DB_NAME }}?host=/cloudsql/${{ env.PROJECT_ID }}:${{ env.REGION }}:${{ env.CLOUD_SQL_INSTANCE }} \
-            --set-env-vars PORT=8080
+            --set-env-vars "DATABASE_URL=${DATABASE_URL},PORT=8080"
