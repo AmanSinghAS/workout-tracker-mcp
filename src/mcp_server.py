@@ -35,6 +35,11 @@ def add_workout_entry(payload: WorkoutIngestPayload) -> dict:
         with Session(engine) as session:
             return handle_add_workout_entry(payload, session)
     except ValueError as exc:
-        raise ValueError(f"Invalid workout payload: {exc}") from exc
+        detail = str(exc) or repr(exc)
+        raise ValueError(f"Invalid workout payload: {detail}") from exc
     except SQLAlchemyError as exc:
-        raise ValueError(f"Database error while ingesting workout entry: {exc}") from exc
+        detail = str(exc) or repr(exc)
+        raise ValueError(f"Database error while ingesting workout entry: {detail}") from exc
+    except Exception as exc:
+        detail = str(exc) or repr(exc)
+        raise ValueError(f"Unexpected error while ingesting workout entry: {detail}") from exc
