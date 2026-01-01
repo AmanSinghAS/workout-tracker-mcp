@@ -8,7 +8,12 @@ WORKDIR /app
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
+COPY server.py ./server.py
+COPY src ./src
+COPY alembic ./alembic
+COPY alembic.ini ./alembic.ini
+COPY examples ./examples
+COPY README.md ./README.md
 
 EXPOSE 8080
 
