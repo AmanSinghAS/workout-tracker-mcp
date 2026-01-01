@@ -40,6 +40,19 @@ jobs:
       - name: Configure Docker auth
         run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev
 
+      - name: Run database migrations
+        env:
+          DATABASE_URL: postgresql+psycopg://${{ env.DB_USER }}:${{ secrets.DB_PASSWORD }}@127.0.0.1:5432/${{ env.DB_NAME }}
+        run: |
+          curl -o cloud-sql-proxy https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.11.4/cloud-sql-proxy.linux.amd64
+          chmod +x cloud-sql-proxy
+          ./cloud-sql-proxy ${{ env.PROJECT_ID }}:${{ env.REGION }}:${{ env.CLOUD_SQL_INSTANCE }} &
+          sleep 2
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m alembic upgrade head
+
+
       - name: Build image
         run: |
           IMAGE_URI=${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.AR_REPOSITORY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
