@@ -76,8 +76,16 @@ with Session(engine) as session:
 
 ## Tests
 Tests expect a live PostgreSQL database available via `DATABASE_URL`. They will skip if the variable is not set.
+Use the Make targets to ensure local runs match CI:
 ```
-pytest
+# start the database (optional if already running)
+make up
+
+# run the test suite against the configured database
+make test
+
+# run all CI checks (tests + Docker image build)
+make ci
 ```
 
 ## JSON schema
@@ -109,4 +117,3 @@ The GitHub Actions workflow deploys to Cloud Run on pushes to `main`.
    - `roles/cloudsql.client`
 
 The workflow file is `/.github/workflows/deploy-cloudrun.yml`.
-

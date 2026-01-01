@@ -1,13 +1,26 @@
-.PHONY: up down logs status
+COMPOSE ?= docker compose
+DOCKER ?= docker
+DATABASE_URL ?= postgresql+psycopg://postgres:postgres@localhost:5432/workout_tracker
+IMAGE ?= workout-tracker-mcp:local
+
+.PHONY: up down logs status test docker-build ci
 
 up:
-	docker compose up -d
+	$(COMPOSE) up -d
 
 down:
-	docker compose down
+	$(COMPOSE) down
 
 logs:
-	docker compose logs -f
+	$(COMPOSE) logs -f
 
 status:
-	docker compose ps
+	$(COMPOSE) ps
+
+test:
+	DATABASE_URL=$(DATABASE_URL) pytest
+
+docker-build:
+	$(DOCKER) build -t $(IMAGE) .
+
+ci: test docker-build
