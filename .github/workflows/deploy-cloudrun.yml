@@ -18,7 +18,7 @@ jobs:
       SERVICE_NAME: workout-tracker-mcp
       AR_REPOSITORY: workout-tracker-mcp
       IMAGE_NAME: workout-tracker-mcp
-      CLOUD_SQL_INSTANCE: workout-tracker-postgres
+      CLOUD_SQL_INSTANCE: workout-tracker-test
       DB_NAME: workout_tracker
       DB_USER: postgres
 
