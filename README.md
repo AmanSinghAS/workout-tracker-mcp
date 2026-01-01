@@ -76,15 +76,18 @@ with Session(engine) as session:
 
 ## Tests
 Tests expect a live PostgreSQL database available via `DATABASE_URL`. They will skip if the variable is not set.
-Use the Make targets to ensure local runs match CI:
+Use the Make targets to ensure local runs match CI and to bring up a local Postgres via Docker Compose:
 ```
-# start the database (optional if already running)
-make up
+# start the database used by tests
+make db-up
+
+# wait for Postgres to be ready (optional, test target already does this)
+make db-wait
 
 # run the test suite against the configured database
 make test
 
-# run all CI checks (tests + Docker image build)
+# run all CI checks (tests + Docker image build), with automatic DB lifecycle management
 make ci
 ```
 
