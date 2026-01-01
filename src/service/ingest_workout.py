@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from typing import Dict
 
-from sqlalchemy import select, text
+from sqlalchemy import literal_column, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
@@ -86,7 +86,7 @@ def ingest_workout(session: Session, payload: Dict | WorkoutIngestPayload) -> Di
                     index_elements=[Workout.user_id, Workout.idempotency_key],
                     set_={"idempotency_key": insert_stmt.excluded.idempotency_key},
                 )
-                .returning(Workout.id, text("xmax = 0").label("inserted"))
+                .returning(Workout.id, literal_column("xmax = 0").label("inserted"))
             )
             result = session.execute(upsert_stmt).one()
             workout_id = result.id

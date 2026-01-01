@@ -1,13 +1,45 @@
-.PHONY: up down logs status
+SHELL := /bin/bash
+COMPOSE ?= docker compose
+DOCKER ?= docker
+POSTGRES_USER ?= postgres
+POSTGRES_PASSWORD ?= postgres
+POSTGRES_DB ?= workout_tracker
+DATABASE_URL ?= postgresql+psycopg://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@localhost:5432/$(POSTGRES_DB)
+IMAGE ?= workout-tracker-mcp:local
+
+.PHONY: up down logs status db-up db-down db-wait test docker-build ci
 
 up:
-	docker compose up -d
+	$(COMPOSE) up -d
 
 down:
-	docker compose down
+	$(COMPOSE) down
 
 logs:
-	docker compose logs -f
+	$(COMPOSE) logs -f
 
 status:
-	docker compose ps
+	$(COMPOSE) ps
+
+db-up:
+	$(COMPOSE) up -d postgres
+
+db-down:
+	$(COMPOSE) down
+
+db-wait:
+	$(COMPOSE) exec -T postgres sh -c "until pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB; do sleep 1; done"
+
+test: db-up db-wait
+	DATABASE_URL=$(DATABASE_URL) pytest
+
+docker-build:
+	$(DOCKER) build -t $(IMAGE) .
+
+ci:
+	@set -euo pipefail; \
+	trap '$(MAKE) db-down' EXIT; \
+	$(MAKE) db-up; \
+	$(MAKE) db-wait; \
+	DATABASE_URL=$(DATABASE_URL) pytest; \
+	$(DOCKER) build -t $(IMAGE) .

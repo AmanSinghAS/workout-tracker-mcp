@@ -76,8 +76,19 @@ with Session(engine) as session:
 
 ## Tests
 Tests expect a live PostgreSQL database available via `DATABASE_URL`. They will skip if the variable is not set.
+Use the Make targets to ensure local runs match CI and to bring up a local Postgres via Docker Compose:
 ```
-pytest
+# start the database used by tests
+make db-up
+
+# wait for Postgres to be ready (optional, test target already does this)
+make db-wait
+
+# run the test suite against the configured database
+make test
+
+# run all CI checks (tests + Docker image build), with automatic DB lifecycle management
+make ci
 ```
 
 ## JSON schema
@@ -109,4 +120,3 @@ The GitHub Actions workflow deploys to Cloud Run on pushes to `main`.
    - `roles/cloudsql.client`
 
 The workflow file is `/.github/workflows/deploy-cloudrun.yml`.
-
