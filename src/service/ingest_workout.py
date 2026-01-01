@@ -3,7 +3,8 @@ from __future__ import annotations
 import uuid
 from typing import Dict
 
-from sqlalchemy import insert, select, text
+from sqlalchemy import select, text
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from src.db.models import AppUser, Exercise, Workout, WorkoutExercise, WorkoutSet
@@ -79,7 +80,7 @@ def ingest_workout(session: Session, payload: Dict | WorkoutIngestPayload) -> Di
 
         idempotent_replay = False
         if data.idempotency_key:
-            insert_stmt = insert(Workout).values(**workout_data)
+            insert_stmt = pg_insert(Workout).values(**workout_data)
             upsert_stmt = (
                 insert_stmt.on_conflict_do_update(
                     index_elements=[Workout.user_id, Workout.idempotency_key],
@@ -93,7 +94,7 @@ def ingest_workout(session: Session, payload: Dict | WorkoutIngestPayload) -> Di
             if not inserted:
                 idempotent_replay = True
         else:
-            insert_stmt = insert(Workout).values(**workout_data).returning(Workout.id)
+            insert_stmt = pg_insert(Workout).values(**workout_data).returning(Workout.id)
             workout_id = session.execute(insert_stmt).scalar_one()
 
         if idempotent_replay:
