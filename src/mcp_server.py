@@ -37,4 +37,4 @@ def add_workout_entry(payload: WorkoutIngestPayload) -> dict:
     except ValueError as exc:
         raise ValueError(f"Invalid workout payload: {exc}") from exc
     except SQLAlchemyError as exc:
-        raise ValueError("Database error while ingesting workout entry.") from exc
+        raise ValueError(f"Database error while ingesting workout entry: {exc}") from exc
