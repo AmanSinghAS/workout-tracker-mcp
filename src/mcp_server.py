@@ -93,6 +93,7 @@ resource_url = AnyHttpUrl(RESOURCE_SERVER_URL)
 metadata = ProtectedResourceMetadata(
     resource=resource_url,
     authorization_servers=[AnyHttpUrl("https://accounts.google.com")],
+    scopes_supported=["openid", "email"],
     resource_name="Workout Tracker MCP",
 )
 metadata_handler = ProtectedResourceMetadataHandler(metadata)
