@@ -81,4 +81,5 @@ jobs:
             --add-cloudsql-instances ${{ env.PROJECT_ID }}:${{ env.REGION }}:${{ env.CLOUD_SQL_INSTANCE }} \
             --set-env-vars "DATABASE_URL=${DATABASE_URL}" \
             --set-env-vars "GOOGLE_CLIENT_ID=${{ env.GOOGLE_CLIENT_ID }}" \
+            --set-env-vars "GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}" \
             --set-env-vars "RESOURCE_SERVER_URL=${{ env.RESOURCE_SERVER_URL }}"

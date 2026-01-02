@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import secrets
 from pathlib import Path
 import time
 from urllib.parse import urlencode, urlparse
@@ -21,7 +22,8 @@ from mcp.server.auth.provider import AccessToken, TokenVerifier
 from mcp.server.auth.settings import AuthSettings
 from mcp.server.auth.handlers.metadata import MetadataHandler, ProtectedResourceMetadataHandler
 from mcp.server.auth.routes import build_resource_metadata_url
-from mcp.shared.auth import OAuthMetadata, ProtectedResourceMetadata
+from mcp.server.auth.json_response import PydanticJSONResponse
+from mcp.shared.auth import OAuthClientInformationFull, OAuthClientMetadata, OAuthMetadata, ProtectedResourceMetadata
 from mcp.server.fastmcp import FastMCP
 
 from src.db.session import engine
@@ -35,6 +37,7 @@ AUTH_SERVER_URL = os.getenv("AUTH_SERVER_URL")
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
 API_KEY = os.getenv("API_KEY")
 API_KEYS_FILE = os.getenv("API_KEYS_FILE", "api_keys.txt")
 
@@ -155,6 +158,7 @@ oauth_metadata = OAuthMetadata(
     response_types_supported=["code"],
     grant_types_supported=["authorization_code", "refresh_token"],
     token_endpoint_auth_methods_supported=["client_secret_post", "client_secret_basic"],
+    registration_endpoint=AnyHttpUrl(f"{AUTH_SERVER_URL}/oauth/register"),
 )
 oauth_metadata_handler = MetadataHandler(oauth_metadata)
 
@@ -171,6 +175,8 @@ async def oauth_authorize(request: StarletteRequest) -> Response:
         params["scope"] = "openid email"
     if "response_type" not in params or not params["response_type"]:
         params["response_type"] = "code"
+    if GOOGLE_CLIENT_ID:
+        params["client_id"] = GOOGLE_CLIENT_ID
     redirect_url = f"{GOOGLE_AUTH_URL}?{urlencode(params)}"
     return RedirectResponse(redirect_url)
 
@@ -179,6 +185,10 @@ async def oauth_authorize(request: StarletteRequest) -> Response:
 async def oauth_token(request: StarletteRequest) -> Response:
     form = await request.form()
     data = dict(form)
+    if GOOGLE_CLIENT_ID:
+        data["client_id"] = GOOGLE_CLIENT_ID
+    if GOOGLE_CLIENT_SECRET:
+        data["client_secret"] = GOOGLE_CLIENT_SECRET
     headers = {}
     auth_header = request.headers.get("authorization")
     if auth_header:
@@ -187,6 +197,21 @@ async def oauth_token(request: StarletteRequest) -> Response:
         resp = await client.post(GOOGLE_TOKEN_URL, data=data, headers=headers)
     return Response(content=resp.content, status_code=resp.status_code, media_type=resp.headers.get("content-type", "application/json"))
 
+
+
+@mcp.custom_route("/oauth/register", methods=["POST"])
+async def oauth_register(request: StarletteRequest) -> Response:
+    body = await request.json()
+    metadata = OAuthClientMetadata.model_validate(body)
+    now = int(time.time())
+    client_info = OAuthClientInformationFull(
+        **metadata.model_dump(),
+        client_id=f"chatgpt-{secrets.token_urlsafe(12)}",
+        client_secret=secrets.token_urlsafe(32),
+        client_id_issued_at=now,
+        client_secret_expires_at=0,
+    )
+    return PydanticJSONResponse(content=client_info)
 
 def handle_add_workout_entry(
     payload: WorkoutIngestPayload | dict, session: Session

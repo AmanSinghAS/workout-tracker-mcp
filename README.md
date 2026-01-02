@@ -33,6 +33,7 @@ python3 server.py
 ### Authentication
 The server requires Google OIDC ID tokens (signed by Google and with `email_verified=true`). Configure:
 Set `GOOGLE_CLIENT_ID` to your OAuth client ID to enforce the token audience.
+Set `GOOGLE_CLIENT_SECRET` to the OAuth client secret for Google token exchange.
 Optionally set `API_KEY` to allow a static key via `Authorization: Bearer <API_KEY>`.
 Optionally set `API_KEYS_FILE` to load multiple keys (default: `api_keys.txt`, comma or newline separated).
 Set `RESOURCE_SERVER_URL` to your public MCP URL (e.g., https://.../mcp) so OAuth discovery can find the protected resource metadata.
@@ -43,7 +44,7 @@ gcloud auth application-default login
 gcloud auth print-identity-token --audiences "<any Google OAuth client ID you control>"
 ```
 
-The server exposes OAuth protected resource metadata at `/.well-known/oauth-protected-resource{path}` and OAuth server metadata at `/.well-known/oauth-authorization-server` for OAuth discovery. It also proxies Google OAuth at `/oauth/authorize` and `/oauth/token` to ensure scopes are set.
+The server exposes OAuth protected resource metadata at `/.well-known/oauth-protected-resource{path}` and OAuth server metadata at `/.well-known/oauth-authorization-server` for OAuth discovery. It also proxies Google OAuth at `/oauth/authorize`, `/oauth/token`, and `/oauth/register` to ensure scopes are set and to support dynamic client registration.
 
 Send the token in the `Authorization` header for all MCP requests, for example:
 ```
