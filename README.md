@@ -33,6 +33,8 @@ python3 server.py
 ### Authentication
 The server requires Google OIDC ID tokens (signed by Google and with `email_verified=true`). Configure:
 Set `GOOGLE_CLIENT_ID` to your OAuth client ID to enforce the token audience.
+Optionally set `API_KEY` to allow a static key via `Authorization: Bearer <API_KEY>`.
+Optionally set `API_KEYS_FILE` to load multiple keys (default: `api_keys.txt`, comma or newline separated).
 Set `RESOURCE_SERVER_URL` to your public MCP URL (e.g., https://.../mcp) so OAuth discovery can find the protected resource metadata.
 
 To obtain an ID token for local testing, use either a browser-based login or `gcloud`:
@@ -47,6 +49,12 @@ Send the token in the `Authorization` header for all MCP requests, for example:
 ```
 curl -H "Authorization: Bearer $(gcloud auth print-identity-token --audiences \"<any Google OAuth client ID you control>\")" \
      http://localhost:8000/mcp
+
+# or with API key
+curl -H "Authorization: Bearer $API_KEY" http://localhost:8000/mcp
+
+# or with key from file
+curl -H "Authorization: Bearer <key-from-file>" http://localhost:8000/mcp
 ```
 
 ## MCP tool payload example

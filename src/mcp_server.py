@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
+import time
 from urllib.parse import urlencode, urlparse
 from typing import Any
 
@@ -33,6 +35,8 @@ AUTH_SERVER_URL = os.getenv("AUTH_SERVER_URL")
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
+API_KEY = os.getenv("API_KEY")
+API_KEYS_FILE = os.getenv("API_KEYS_FILE", "api_keys.txt")
 
 if not AUTH_SERVER_URL:
     parsed_resource = urlparse(RESOURCE_SERVER_URL)
@@ -41,12 +45,40 @@ ALLOWED_ISSUERS = {"https://accounts.google.com", "accounts.google.com"}
 GOOGLE_ISSUER = "https://accounts.google.com"
 
 
+
+def load_api_keys(path: str, inline_key: str | None) -> set[str]:
+    entries: set[str] = set()
+
+    if inline_key:
+        entries.add(inline_key.strip())
+
+    file_path = Path(path)
+    if file_path.exists():
+        raw = file_path.read_text(encoding="utf-8")
+        for line in raw.splitlines():
+            for key in line.split(","):
+                cleaned = key.strip()
+                if cleaned:
+                    entries.add(cleaned)
+
+    return entries
+
+
 class GoogleTokenVerifier(TokenVerifier):
-    def __init__(self, client_id: str | None):
+    def __init__(self, client_id: str | None, api_keys: set[str]):
         self.client_id = client_id
+        self.api_keys = api_keys
         self._request = GoogleAuthRequest()
 
     def _verify(self, token: str) -> AccessToken | None:
+        if self.api_keys and token in self.api_keys:
+            return AccessToken(
+                token=token,
+                client_id="api-key",
+                scopes=[],
+                expires_at=int(time.time()) + 31536000,
+            )
+
         try:
             claims: dict[str, Any] = id_token.verify_oauth2_token(
                 token, self._request, audience=self.client_id
@@ -94,7 +126,7 @@ mcp = FastMCP(
         issuer_url=AnyHttpUrl(AUTH_SERVER_URL),
         resource_server_url=RESOURCE_SERVER_URL,
     ),
-    token_verifier=GoogleTokenVerifier(GOOGLE_CLIENT_ID),
+    token_verifier=GoogleTokenVerifier(GOOGLE_CLIENT_ID, load_api_keys(API_KEYS_FILE, API_KEY)),
 )
 
 
