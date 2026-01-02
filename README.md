@@ -30,6 +30,27 @@ Start the MCP server (streamable HTTP transport):
 python3 server.py
 ```
 
+### Authentication
+The server requires Google OIDC ID tokens (any Google client ID is accepted, as long as the token is signed by Google and the email is verified and allowlisted). Configure:
+```
+# Optional: path to the allowlist file (defaults to ./allowed_emails.txt)
+export ALLOWED_EMAILS_FILE="allowed_emails.txt"
+```
+
+The allowlist file contains one email per line (commas also allowed on a line). A default `allowed_emails.txt` is included with `amansinghdallas.03@gmail.com`; if the file is missing or empty, the server falls back to that default email.
+
+To obtain an ID token for local testing, use either a browser-based login or `gcloud`:
+```
+gcloud auth application-default login
+gcloud auth print-identity-token --audiences "<any Google OAuth client ID you control>"
+```
+
+Send the token in the `Authorization` header for all MCP requests, for example:
+```
+curl -H "Authorization: Bearer $(gcloud auth print-identity-token --audiences \"<any Google OAuth client ID you control>\")" \
+     http://localhost:8000/mcp
+```
+
 ## MCP tool payload example
 Payload for `add_workout_entry`:
 ```json

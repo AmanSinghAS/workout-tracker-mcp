@@ -4,3 +4,5 @@ alembic>=1.12
 pydantic>=2,<3
 pytest>=7
 mcp
+google-auth>=2.0
+requests>=2.0

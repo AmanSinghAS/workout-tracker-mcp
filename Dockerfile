@@ -10,6 +10,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY server.py ./server.py
 COPY src ./src
+COPY allowed_emails.txt ./allowed_emails.txt
 COPY alembic ./alembic
 COPY alembic.ini ./alembic.ini
 COPY examples ./examples

@@ -1,10 +1,17 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
+from typing import Any
 
+import anyio
+from google.auth.transport.requests import Request
+from google.oauth2 import id_token
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from mcp.server.auth.provider import AccessToken, TokenVerifier
+from mcp.server.auth.settings import AuthSettings
 from mcp.server.fastmcp import FastMCP
 
 from src.db.session import engine
@@ -13,12 +20,85 @@ from src.service.ingest_workout import ingest_workout
 
 HOST = os.getenv("HOST", "0.0.0.0")
 PORT = int(os.getenv("PORT", "8000"))
+RESOURCE_SERVER_URL = os.getenv("RESOURCE_SERVER_URL", f"http://{HOST}:{PORT}")
+DEFAULT_EMAIL_ALLOWLIST = {"amansinghdallas.03@gmail.com"}
+ALLOWED_EMAILS_FILE = os.getenv("ALLOWED_EMAILS_FILE", "allowed_emails.txt")
+ALLOWED_ISSUERS = {"https://accounts.google.com", "accounts.google.com"}
+
+
+def load_allowed_emails(path: str) -> set[str]:
+    file_path = Path(path)
+    entries: set[str] = set()
+
+    if file_path.exists():
+        raw = file_path.read_text(encoding="utf-8")
+        for line in raw.splitlines():
+            for email in line.split(","):
+                cleaned = email.strip().lower()
+                if cleaned:
+                    entries.add(cleaned)
+
+    if not entries:
+        entries = set(DEFAULT_EMAIL_ALLOWLIST)
+
+    return entries
+
+
+class GoogleTokenVerifier(TokenVerifier):
+    def __init__(self, allowed_emails: set[str]):
+        self.allowed_emails = allowed_emails
+        self._request = Request()
+
+    def _verify(self, token: str) -> AccessToken | None:
+        try:
+            claims: dict[str, Any] = id_token.verify_oauth2_token(
+                token, self._request, audience=None
+            )
+        except Exception:
+            return None
+
+        issuer = claims.get("iss")
+        if issuer not in ALLOWED_ISSUERS:
+            return None
+
+        email = claims.get("email")
+        email_verified = claims.get("email_verified")
+        if not email or email_verified is not True:
+            return None
+
+        normalized_email = str(email).lower()
+        if normalized_email not in self.allowed_emails:
+            return None
+
+        expires_at = claims.get("exp")
+        try:
+            expires_at_int = int(expires_at) if expires_at is not None else None
+        except (TypeError, ValueError):
+            expires_at_int = None
+        if expires_at_int is None:
+            return None
+
+        return AccessToken(
+            token=token,
+            client_id=str(claims.get("aud", "")),
+            scopes=[],
+            expires_at=expires_at_int,
+        )
+
+    async def verify_token(self, token: str) -> AccessToken | None:
+        return await anyio.to_thread.run_sync(self._verify, token)
+
 
 mcp = FastMCP(
     "workout-tracker-mcp",
     instructions="Persist workout entries to the Workout Tracker system of record.",
     host=HOST,
     port=PORT,
+    auth=AuthSettings(
+        issuer_url="https://accounts.google.com",
+        resource_server_url=RESOURCE_SERVER_URL,
+    ),
+    token_verifier=GoogleTokenVerifier(load_allowed_emails(ALLOWED_EMAILS_FILE)),
 )
 
 
