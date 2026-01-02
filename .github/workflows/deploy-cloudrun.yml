@@ -21,6 +21,7 @@ jobs:
       CLOUD_SQL_INSTANCE: workout-tracker-test
       DB_NAME: workout_tracker
       DB_USER: postgres
+      GOOGLE_CLIENT_ID: 952839999825-b5dmhq5ngm066ef9ui7km014hnlng32k.apps.googleusercontent.com
 
     steps:
       - name: Checkout
@@ -77,4 +78,5 @@ jobs:
             --platform managed \
             --allow-unauthenticated \
             --add-cloudsql-instances ${{ env.PROJECT_ID }}:${{ env.REGION }}:${{ env.CLOUD_SQL_INSTANCE }} \
-            --set-env-vars "DATABASE_URL=${DATABASE_URL}"
+            --set-env-vars "DATABASE_URL=${DATABASE_URL}" \
+            --set-env-vars "GOOGLE_CLIENT_ID=${{ env.GOOGLE_CLIENT_ID }}"
