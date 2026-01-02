@@ -1,16 +1,24 @@
 from __future__ import annotations
 
 import os
+from urllib.parse import urlparse
 from typing import Any
 
+from pydantic import AnyHttpUrl
+
 import anyio
-from google.auth.transport.requests import Request
+from google.auth.transport.requests import Request as GoogleAuthRequest
 from google.oauth2 import id_token
+from starlette.requests import Request as StarletteRequest
+from starlette.responses import Response
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from mcp.server.auth.provider import AccessToken, TokenVerifier
 from mcp.server.auth.settings import AuthSettings
+from mcp.server.auth.handlers.metadata import ProtectedResourceMetadataHandler
+from mcp.server.auth.routes import build_resource_metadata_url
+from mcp.shared.auth import ProtectedResourceMetadata
 from mcp.server.fastmcp import FastMCP
 
 from src.db.session import engine
@@ -19,7 +27,7 @@ from src.service.ingest_workout import ingest_workout
 
 HOST = os.getenv("HOST", "0.0.0.0")
 PORT = int(os.getenv("PORT", "8000"))
-RESOURCE_SERVER_URL = os.getenv("RESOURCE_SERVER_URL", f"http://{HOST}:{PORT}")
+RESOURCE_SERVER_URL = os.getenv("RESOURCE_SERVER_URL", f"http://{HOST}:{PORT}/mcp")
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
 ALLOWED_ISSUERS = {"https://accounts.google.com", "accounts.google.com"}
 
@@ -27,7 +35,7 @@ ALLOWED_ISSUERS = {"https://accounts.google.com", "accounts.google.com"}
 class GoogleTokenVerifier(TokenVerifier):
     def __init__(self, client_id: str | None):
         self.client_id = client_id
-        self._request = Request()
+        self._request = GoogleAuthRequest()
 
     def _verify(self, token: str) -> AccessToken | None:
         try:
@@ -79,6 +87,22 @@ mcp = FastMCP(
     ),
     token_verifier=GoogleTokenVerifier(GOOGLE_CLIENT_ID),
 )
+
+
+resource_url = AnyHttpUrl(RESOURCE_SERVER_URL)
+metadata = ProtectedResourceMetadata(
+    resource=resource_url,
+    authorization_servers=[AnyHttpUrl("https://accounts.google.com")],
+    resource_name="Workout Tracker MCP",
+)
+metadata_handler = ProtectedResourceMetadataHandler(metadata)
+metadata_url = build_resource_metadata_url(resource_url)
+metadata_path = urlparse(str(metadata_url)).path
+
+
+@mcp.custom_route(metadata_path, methods=["GET", "OPTIONS"])
+async def oauth_protected_resource(request: StarletteRequest) -> Response:
+    return await metadata_handler.handle(request)
 
 
 def handle_add_workout_entry(
