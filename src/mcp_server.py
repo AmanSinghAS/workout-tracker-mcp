@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
 from typing import Any
 
 import anyio
@@ -21,38 +20,19 @@ from src.service.ingest_workout import ingest_workout
 HOST = os.getenv("HOST", "0.0.0.0")
 PORT = int(os.getenv("PORT", "8000"))
 RESOURCE_SERVER_URL = os.getenv("RESOURCE_SERVER_URL", f"http://{HOST}:{PORT}")
-DEFAULT_EMAIL_ALLOWLIST = {"amansinghdallas.03@gmail.com"}
-ALLOWED_EMAILS_FILE = os.getenv("ALLOWED_EMAILS_FILE", "allowed_emails.txt")
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
 ALLOWED_ISSUERS = {"https://accounts.google.com", "accounts.google.com"}
 
 
-def load_allowed_emails(path: str) -> set[str]:
-    file_path = Path(path)
-    entries: set[str] = set()
-
-    if file_path.exists():
-        raw = file_path.read_text(encoding="utf-8")
-        for line in raw.splitlines():
-            for email in line.split(","):
-                cleaned = email.strip().lower()
-                if cleaned:
-                    entries.add(cleaned)
-
-    if not entries:
-        entries = set(DEFAULT_EMAIL_ALLOWLIST)
-
-    return entries
-
-
 class GoogleTokenVerifier(TokenVerifier):
-    def __init__(self, allowed_emails: set[str]):
-        self.allowed_emails = allowed_emails
+    def __init__(self, client_id: str | None):
+        self.client_id = client_id
         self._request = Request()
 
     def _verify(self, token: str) -> AccessToken | None:
         try:
             claims: dict[str, Any] = id_token.verify_oauth2_token(
-                token, self._request, audience=None
+                token, self._request, audience=self.client_id
             )
         except Exception:
             return None
@@ -61,13 +41,12 @@ class GoogleTokenVerifier(TokenVerifier):
         if issuer not in ALLOWED_ISSUERS:
             return None
 
+        if self.client_id and claims.get("aud") != self.client_id:
+            return None
+
         email = claims.get("email")
         email_verified = claims.get("email_verified")
         if not email or email_verified is not True:
-            return None
-
-        normalized_email = str(email).lower()
-        if normalized_email not in self.allowed_emails:
             return None
 
         expires_at = claims.get("exp")
@@ -98,7 +77,7 @@ mcp = FastMCP(
         issuer_url="https://accounts.google.com",
         resource_server_url=RESOURCE_SERVER_URL,
     ),
-    token_verifier=GoogleTokenVerifier(load_allowed_emails(ALLOWED_EMAILS_FILE)),
+    token_verifier=GoogleTokenVerifier(GOOGLE_CLIENT_ID),
 )
 
 

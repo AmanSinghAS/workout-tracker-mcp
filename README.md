@@ -31,13 +31,8 @@ python3 server.py
 ```
 
 ### Authentication
-The server requires Google OIDC ID tokens (any Google client ID is accepted, as long as the token is signed by Google and the email is verified and allowlisted). Configure:
-```
-# Optional: path to the allowlist file (defaults to ./allowed_emails.txt)
-export ALLOWED_EMAILS_FILE="allowed_emails.txt"
-```
-
-The allowlist file contains one email per line (commas also allowed on a line). A default `allowed_emails.txt` is included with `amansinghdallas.03@gmail.com`; if the file is missing or empty, the server falls back to that default email.
+The server requires Google OIDC ID tokens (signed by Google and with `email_verified=true`). Configure:
+Set `GOOGLE_CLIENT_ID` to your OAuth client ID to enforce the token audience.
 
 To obtain an ID token for local testing, use either a browser-based login or `gcloud`:
 ```
