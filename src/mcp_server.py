@@ -28,16 +28,15 @@ ALLOWED_ISSUERS = {"https://accounts.google.com", "accounts.google.com"}
 
 def load_allowed_emails(path: str) -> set[str]:
     file_path = Path(path)
-    if not file_path.exists():
-        raise ValueError(f"Allowed emails file not found at {file_path}")
-
-    raw = file_path.read_text(encoding="utf-8")
     entries: set[str] = set()
-    for line in raw.splitlines():
-        for email in line.split(","):
-            cleaned = email.strip().lower()
-            if cleaned:
-                entries.add(cleaned)
+
+    if file_path.exists():
+        raw = file_path.read_text(encoding="utf-8")
+        for line in raw.splitlines():
+            for email in line.split(","):
+                cleaned = email.strip().lower()
+                if cleaned:
+                    entries.add(cleaned)
 
     if not entries:
         entries = set(DEFAULT_EMAIL_ALLOWLIST)

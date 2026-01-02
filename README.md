@@ -37,7 +37,7 @@ The server requires Google OIDC ID tokens (any Google client ID is accepted, as 
 export ALLOWED_EMAILS_FILE="allowed_emails.txt"
 ```
 
-The allowlist file contains one email per line (commas also allowed on a line). A default `allowed_emails.txt` is included with `amansinghdallas.03@gmail.com`.
+The allowlist file contains one email per line (commas also allowed on a line). A default `allowed_emails.txt` is included with `amansinghdallas.03@gmail.com`; if the file is missing or empty, the server falls back to that default email.
 
 To obtain an ID token for local testing, use either a browser-based login or `gcloud`:
 ```
