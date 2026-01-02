@@ -16,9 +16,9 @@ from sqlalchemy.orm import Session
 
 from mcp.server.auth.provider import AccessToken, TokenVerifier
 from mcp.server.auth.settings import AuthSettings
-from mcp.server.auth.handlers.metadata import ProtectedResourceMetadataHandler
+from mcp.server.auth.handlers.metadata import MetadataHandler, ProtectedResourceMetadataHandler
 from mcp.server.auth.routes import build_resource_metadata_url
-from mcp.shared.auth import ProtectedResourceMetadata
+from mcp.shared.auth import OAuthMetadata, ProtectedResourceMetadata
 from mcp.server.fastmcp import FastMCP
 
 from src.db.session import engine
@@ -30,6 +30,7 @@ PORT = int(os.getenv("PORT", "8000"))
 RESOURCE_SERVER_URL = os.getenv("RESOURCE_SERVER_URL", f"http://{HOST}:{PORT}/mcp")
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
 ALLOWED_ISSUERS = {"https://accounts.google.com", "accounts.google.com"}
+GOOGLE_ISSUER = "https://accounts.google.com"
 
 
 class GoogleTokenVerifier(TokenVerifier):
@@ -104,6 +105,23 @@ metadata_path = urlparse(str(metadata_url)).path
 @mcp.custom_route(metadata_path, methods=["GET", "OPTIONS"])
 async def oauth_protected_resource(request: StarletteRequest) -> Response:
     return await metadata_handler.handle(request)
+
+
+oauth_metadata = OAuthMetadata(
+    issuer=AnyHttpUrl(GOOGLE_ISSUER),
+    authorization_endpoint=AnyHttpUrl("https://accounts.google.com/o/oauth2/v2/auth"),
+    token_endpoint=AnyHttpUrl("https://oauth2.googleapis.com/token"),
+    scopes_supported=["openid", "email"],
+    response_types_supported=["code"],
+    grant_types_supported=["authorization_code", "refresh_token"],
+    token_endpoint_auth_methods_supported=["client_secret_post", "client_secret_basic"],
+)
+oauth_metadata_handler = MetadataHandler(oauth_metadata)
+
+
+@mcp.custom_route("/.well-known/oauth-authorization-server", methods=["GET", "OPTIONS"])
+async def oauth_authorization_server(request: StarletteRequest) -> Response:
+    return await oauth_metadata_handler.handle(request)
 
 
 def handle_add_workout_entry(
