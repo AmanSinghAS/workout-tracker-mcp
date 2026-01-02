@@ -31,13 +31,10 @@ python3 server.py
 ```
 
 ### Authentication
-The server requires Google OIDC ID tokens. Configure:
+The server requires Google OIDC ID tokens (any Google client ID is accepted, as long as the token is signed by Google and the email is verified and allowlisted). Configure:
 ```
-export GOOGLE_CLIENT_ID=<your_google_oauth_client_id>
 # Optional: path to the allowlist file (defaults to ./allowed_emails.txt)
 export ALLOWED_EMAILS_FILE="allowed_emails.txt"
-# Optional: accept any Google client ID (skip audience check). Defaults to false.
-# export ALLOW_ANY_GOOGLE_CLIENT_ID=true
 ```
 
 The allowlist file contains one email per line (commas also allowed on a line). A default `allowed_emails.txt` is included with `amansinghdallas.03@gmail.com`.
@@ -45,12 +42,12 @@ The allowlist file contains one email per line (commas also allowed on a line). 
 To obtain an ID token for local testing, use either a browser-based login or `gcloud`:
 ```
 gcloud auth application-default login
-gcloud auth print-identity-token --audiences "$GOOGLE_CLIENT_ID"
+gcloud auth print-identity-token --audiences "<any Google OAuth client ID you control>"
 ```
 
 Send the token in the `Authorization` header for all MCP requests, for example:
 ```
-curl -H "Authorization: Bearer $(gcloud auth print-identity-token --audiences \"$GOOGLE_CLIENT_ID\")" \
+curl -H "Authorization: Bearer $(gcloud auth print-identity-token --audiences \"<any Google OAuth client ID you control>\")" \
      http://localhost:8000/mcp
 ```
 

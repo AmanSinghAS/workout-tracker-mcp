@@ -24,11 +24,6 @@ RESOURCE_SERVER_URL = os.getenv("RESOURCE_SERVER_URL", f"http://{HOST}:{PORT}")
 DEFAULT_EMAIL_ALLOWLIST = {"amansinghdallas.03@gmail.com"}
 ALLOWED_EMAILS_FILE = os.getenv("ALLOWED_EMAILS_FILE", "allowed_emails.txt")
 ALLOWED_ISSUERS = {"https://accounts.google.com", "accounts.google.com"}
-ALLOW_ANY_GOOGLE_CLIENT_ID = os.getenv("ALLOW_ANY_GOOGLE_CLIENT_ID", "false").lower() == "true"
-
-GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
-if not ALLOW_ANY_GOOGLE_CLIENT_ID and not GOOGLE_CLIENT_ID:
-    raise ValueError("GOOGLE_CLIENT_ID is required for Google authentication (set ALLOW_ANY_GOOGLE_CLIENT_ID=true to disable)")
 
 
 def load_allowed_emails(path: str) -> set[str]:
@@ -51,16 +46,14 @@ def load_allowed_emails(path: str) -> set[str]:
 
 
 class GoogleTokenVerifier(TokenVerifier):
-    def __init__(self, client_id: str | None, allowed_emails: set[str], allow_any_client_id: bool):
-        self.client_id = client_id
+    def __init__(self, allowed_emails: set[str]):
         self.allowed_emails = allowed_emails
-        self.allow_any_client_id = allow_any_client_id
         self._request = Request()
 
     def _verify(self, token: str) -> AccessToken | None:
         try:
             claims: dict[str, Any] = id_token.verify_oauth2_token(
-                token, self._request, audience=None if self.allow_any_client_id else self.client_id
+                token, self._request, audience=None
             )
         except Exception:
             return None
@@ -106,7 +99,7 @@ mcp = FastMCP(
         issuer_url="https://accounts.google.com",
         resource_server_url=RESOURCE_SERVER_URL,
     ),
-    token_verifier=GoogleTokenVerifier(GOOGLE_CLIENT_ID, load_allowed_emails(ALLOWED_EMAILS_FILE), ALLOW_ANY_GOOGLE_CLIENT_ID),
+    token_verifier=GoogleTokenVerifier(load_allowed_emails(ALLOWED_EMAILS_FILE)),
 )
 
 
