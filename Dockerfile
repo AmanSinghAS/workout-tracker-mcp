@@ -15,6 +15,7 @@ COPY alembic ./alembic
 COPY alembic.ini ./alembic.ini
 COPY examples ./examples
 COPY README.md ./README.md
+COPY api_keys.txt ./api_keys.txt
 
 EXPOSE 8080
 
