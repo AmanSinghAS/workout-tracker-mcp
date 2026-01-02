@@ -75,15 +75,17 @@ class GoogleTokenVerifier(TokenVerifier):
         self.api_keys = api_keys
         self._request = GoogleAuthRequest()
 
-    def _verify(self, token: str) -> AccessToken | None:
-        if self.api_keys and token in self.api_keys:
-            return AccessToken(
-                token=token,
-                client_id="api-key",
-                scopes=[],
-                expires_at=int(time.time()) + 31536000,
-            )
+    def _verify_api_key(self, token: str) -> AccessToken | None:
+        if not self.api_keys or token not in self.api_keys:
+            return None
+        return AccessToken(
+            token=token,
+            client_id="api-key",
+            scopes=[],
+            expires_at=int(time.time()) + 31536000,
+        )
 
+    def _verify_id_token(self, token: str) -> AccessToken | None:
         try:
             claims: dict[str, Any] = id_token.verify_oauth2_token(
                 token, self._request, audience=self.client_id
@@ -119,7 +121,59 @@ class GoogleTokenVerifier(TokenVerifier):
         )
 
     async def verify_token(self, token: str) -> AccessToken | None:
-        return await anyio.to_thread.run_sync(self._verify, token)
+        api_key = self._verify_api_key(token)
+        if api_key:
+            return api_key
+
+        id_result = await anyio.to_thread.run_sync(self._verify_id_token, token)
+        if id_result:
+            return id_result
+
+        return await self._verify_access_token(token)
+
+    async def _verify_access_token(self, token: str) -> AccessToken | None:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(
+                "https://oauth2.googleapis.com/tokeninfo",
+                params={"access_token": token},
+            )
+        if resp.status_code != 200:
+            return None
+        try:
+            data = resp.json()
+        except ValueError:
+            return None
+
+        issuer = data.get("iss")
+        if issuer and issuer not in ALLOWED_ISSUERS:
+            return None
+
+        aud = data.get("audience") or data.get("aud")
+        if self.client_id and aud and aud != self.client_id:
+            return None
+
+        email = data.get("email")
+        email_verified = data.get("email_verified")
+        if not email or str(email_verified).lower() not in {"true", "1"}:
+            return None
+
+        expires_in = data.get("expires_in")
+        try:
+            expires_at = int(time.time()) + int(expires_in) if expires_in else None
+        except (TypeError, ValueError):
+            expires_at = None
+        if expires_at is None:
+            return None
+
+        scopes_raw = data.get("scope", "")
+        scopes = [s for s in scopes_raw.split() if s]
+
+        return AccessToken(
+            token=token,
+            client_id=str(aud or ""),
+            scopes=scopes,
+            expires_at=expires_at,
+        )
 
 
 mcp = FastMCP(
