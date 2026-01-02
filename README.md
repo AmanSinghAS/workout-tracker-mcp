@@ -30,6 +30,28 @@ Start the MCP server (streamable HTTP transport):
 python3 server.py
 ```
 
+### Authentication
+The server requires Google OIDC ID tokens. Configure:
+```
+export GOOGLE_CLIENT_ID=<your_google_oauth_client_id>
+# Optional: path to the allowlist file (defaults to ./allowed_emails.txt)
+export ALLOWED_EMAILS_FILE="allowed_emails.txt"
+```
+
+The allowlist file contains one email per line (commas also allowed on a line). A default `allowed_emails.txt` is included with `amansinghdallas.03@gmail.com`.
+
+To obtain an ID token for local testing, use either a browser-based login or `gcloud`:
+```
+gcloud auth application-default login
+gcloud auth print-identity-token --audiences "$GOOGLE_CLIENT_ID"
+```
+
+Send the token in the `Authorization` header for all MCP requests, for example:
+```
+curl -H "Authorization: Bearer $(gcloud auth print-identity-token --audiences \"$GOOGLE_CLIENT_ID\")" \
+     http://localhost:8000/mcp
+```
+
 ## MCP tool payload example
 Payload for `add_workout_entry`:
 ```json
@@ -109,4 +131,3 @@ The GitHub Actions workflow deploys to Cloud Run on pushes to `main`.
    - `roles/cloudsql.client`
 
 The workflow file is `/.github/workflows/deploy-cloudrun.yml`.
-
