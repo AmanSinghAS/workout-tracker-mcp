@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import logging
 import secrets
 from pathlib import Path
 import time
@@ -47,6 +48,7 @@ if not AUTH_SERVER_URL:
 ALLOWED_ISSUERS = {"https://accounts.google.com", "accounts.google.com"}
 GOOGLE_ISSUER = "https://accounts.google.com"
 
+logger = logging.getLogger(__name__)
 
 
 def load_api_keys(path: str, inline_key: str | None) -> set[str]:
@@ -177,6 +179,13 @@ async def oauth_authorize(request: StarletteRequest) -> Response:
         params["response_type"] = "code"
     if GOOGLE_CLIENT_ID:
         params["client_id"] = GOOGLE_CLIENT_ID
+
+    logger.info("oauth_authorize", extra={
+        "client_id": params.get("client_id"),
+        "redirect_uri": params.get("redirect_uri"),
+        "scope": params.get("scope"),
+        "response_type": params.get("response_type"),
+    })
     redirect_url = f"{GOOGLE_AUTH_URL}?{urlencode(params)}"
     return RedirectResponse(redirect_url)
 
@@ -190,6 +199,12 @@ async def oauth_token(request: StarletteRequest) -> Response:
     if GOOGLE_CLIENT_SECRET:
         data["client_secret"] = GOOGLE_CLIENT_SECRET
     headers = {}
+
+    logger.info("oauth_token", extra={
+        "client_id": data.get("client_id"),
+        "redirect_uri": data.get("redirect_uri"),
+        "grant_type": data.get("grant_type"),
+    })
     auth_header = request.headers.get("authorization")
     if auth_header:
         headers["authorization"] = auth_header
@@ -203,6 +218,10 @@ async def oauth_token(request: StarletteRequest) -> Response:
 async def oauth_register(request: StarletteRequest) -> Response:
     body = await request.json()
     metadata = OAuthClientMetadata.model_validate(body)
+    logger.info("oauth_register", extra={
+        "token_endpoint_auth_method": metadata.token_endpoint_auth_method,
+        "redirect_uris": metadata.redirect_uris,
+    })
     now = int(time.time())
     client_info = OAuthClientInformationFull(
         **metadata.model_dump(),
@@ -212,6 +231,7 @@ async def oauth_register(request: StarletteRequest) -> Response:
         client_secret_expires_at=0,
     )
     return PydanticJSONResponse(content=client_info)
+
 
 def handle_add_workout_entry(
     payload: WorkoutIngestPayload | dict, session: Session
