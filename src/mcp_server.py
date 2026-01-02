@@ -1,16 +1,17 @@
 from __future__ import annotations
 
 import os
-from urllib.parse import urlparse
+from urllib.parse import urlencode, urlparse
 from typing import Any
 
 from pydantic import AnyHttpUrl
 
 import anyio
+import httpx
 from google.auth.transport.requests import Request as GoogleAuthRequest
 from google.oauth2 import id_token
 from starlette.requests import Request as StarletteRequest
-from starlette.responses import Response
+from starlette.responses import RedirectResponse, Response
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -28,7 +29,14 @@ from src.service.ingest_workout import ingest_workout
 HOST = os.getenv("HOST", "0.0.0.0")
 PORT = int(os.getenv("PORT", "8000"))
 RESOURCE_SERVER_URL = os.getenv("RESOURCE_SERVER_URL", f"http://{HOST}:{PORT}/mcp")
+AUTH_SERVER_URL = os.getenv("AUTH_SERVER_URL")
+GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
+GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
+
+if not AUTH_SERVER_URL:
+    parsed_resource = urlparse(RESOURCE_SERVER_URL)
+    AUTH_SERVER_URL = f"{parsed_resource.scheme}://{parsed_resource.netloc}"
 ALLOWED_ISSUERS = {"https://accounts.google.com", "accounts.google.com"}
 GOOGLE_ISSUER = "https://accounts.google.com"
 
@@ -83,7 +91,7 @@ mcp = FastMCP(
     host=HOST,
     port=PORT,
     auth=AuthSettings(
-        issuer_url="https://accounts.google.com",
+        issuer_url=AnyHttpUrl(AUTH_SERVER_URL),
         resource_server_url=RESOURCE_SERVER_URL,
     ),
     token_verifier=GoogleTokenVerifier(GOOGLE_CLIENT_ID),
@@ -93,7 +101,7 @@ mcp = FastMCP(
 resource_url = AnyHttpUrl(RESOURCE_SERVER_URL)
 metadata = ProtectedResourceMetadata(
     resource=resource_url,
-    authorization_servers=[AnyHttpUrl("https://accounts.google.com")],
+    authorization_servers=[AnyHttpUrl(AUTH_SERVER_URL)],
     scopes_supported=["openid", "email"],
     resource_name="Workout Tracker MCP",
 )
@@ -108,9 +116,9 @@ async def oauth_protected_resource(request: StarletteRequest) -> Response:
 
 
 oauth_metadata = OAuthMetadata(
-    issuer=AnyHttpUrl(GOOGLE_ISSUER),
-    authorization_endpoint=AnyHttpUrl("https://accounts.google.com/o/oauth2/v2/auth"),
-    token_endpoint=AnyHttpUrl("https://oauth2.googleapis.com/token"),
+    issuer=AnyHttpUrl(AUTH_SERVER_URL),
+    authorization_endpoint=AnyHttpUrl(f"{AUTH_SERVER_URL}/oauth/authorize"),
+    token_endpoint=AnyHttpUrl(f"{AUTH_SERVER_URL}/oauth/token"),
     scopes_supported=["openid", "email"],
     response_types_supported=["code"],
     grant_types_supported=["authorization_code", "refresh_token"],
@@ -122,6 +130,30 @@ oauth_metadata_handler = MetadataHandler(oauth_metadata)
 @mcp.custom_route("/.well-known/oauth-authorization-server", methods=["GET", "OPTIONS"])
 async def oauth_authorization_server(request: StarletteRequest) -> Response:
     return await oauth_metadata_handler.handle(request)
+
+
+@mcp.custom_route("/oauth/authorize", methods=["GET"])
+async def oauth_authorize(request: StarletteRequest) -> Response:
+    params = dict(request.query_params)
+    if "scope" not in params or not params["scope"]:
+        params["scope"] = "openid email"
+    if "response_type" not in params or not params["response_type"]:
+        params["response_type"] = "code"
+    redirect_url = f"{GOOGLE_AUTH_URL}?{urlencode(params)}"
+    return RedirectResponse(redirect_url)
+
+
+@mcp.custom_route("/oauth/token", methods=["POST"])
+async def oauth_token(request: StarletteRequest) -> Response:
+    form = await request.form()
+    data = dict(form)
+    headers = {}
+    auth_header = request.headers.get("authorization")
+    if auth_header:
+        headers["authorization"] = auth_header
+    async with httpx.AsyncClient(timeout=30) as client:
+        resp = await client.post(GOOGLE_TOKEN_URL, data=data, headers=headers)
+    return Response(content=resp.content, status_code=resp.status_code, media_type=resp.headers.get("content-type", "application/json"))
 
 
 def handle_add_workout_entry(

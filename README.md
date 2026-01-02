@@ -41,7 +41,7 @@ gcloud auth application-default login
 gcloud auth print-identity-token --audiences "<any Google OAuth client ID you control>"
 ```
 
-The server exposes OAuth protected resource metadata at `/.well-known/oauth-protected-resource{path}` and OAuth server metadata at `/.well-known/oauth-authorization-server` for OAuth discovery.
+The server exposes OAuth protected resource metadata at `/.well-known/oauth-protected-resource{path}` and OAuth server metadata at `/.well-known/oauth-authorization-server` for OAuth discovery. It also proxies Google OAuth at `/oauth/authorize` and `/oauth/token` to ensure scopes are set.
 
 Send the token in the `Authorization` header for all MCP requests, for example:
 ```
