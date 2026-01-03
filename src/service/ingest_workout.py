@@ -60,10 +60,11 @@ def _resolve_exercise_id(session: Session, user_id: uuid.UUID, exercise: Exercis
     return new_exercise.id
 
 
-def _next_ordinal(session: Session, workout_id: uuid.UUID) -> int:
-    current_max = session.execute(
-        select(func.max(WorkoutExercise.ordinal)).where(WorkoutExercise.workout_id == workout_id)
-    ).scalar_one_or_none()
+def _next_ordinal(session: Session, workout_id: uuid.UUID, lock: bool = False) -> int:
+    query = select(func.max(WorkoutExercise.ordinal)).where(WorkoutExercise.workout_id == workout_id)
+    if lock:
+        query = query.with_for_update()
+    current_max = session.execute(query).scalar_one_or_none()
     return (current_max or -1) + 1
 
 
@@ -126,7 +127,6 @@ def ingest_workout(session: Session, payload: Dict | WorkoutIngestPayload) -> Di
             appended_to_existing = True
             if data.idempotency_key and existing_workout.idempotency_key is None:
                 existing_workout.idempotency_key = data.idempotency_key
-            ordinal_start = _next_ordinal(session, workout_id)
         else:
             insert_stmt = (
                 pg_insert(Workout)
@@ -138,7 +138,6 @@ def ingest_workout(session: Session, payload: Dict | WorkoutIngestPayload) -> Di
             if inserted_row:
                 workout_id = inserted_row.id
                 appended_to_existing = False
-                ordinal_start = 0
             else:
                 existing_workout = session.execute(
                     select(Workout).where(
@@ -148,9 +147,10 @@ def ingest_workout(session: Session, payload: Dict | WorkoutIngestPayload) -> Di
                 ).scalar_one()
                 workout_id = existing_workout.id
                 appended_to_existing = True
-                ordinal_start = _next_ordinal(session, workout_id)
                 if data.idempotency_key and existing_workout.idempotency_key is None:
                     existing_workout.idempotency_key = data.idempotency_key
+
+        ordinal_start = _next_ordinal(session, workout_id, lock=True)
 
         for offset, exercise in enumerate(data.exercises):
             ordinal = ordinal_start + offset
