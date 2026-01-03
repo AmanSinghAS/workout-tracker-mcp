@@ -171,39 +171,41 @@ def ingest_workout(session: Session, payload: Dict | WorkoutIngestPayload) -> Di
             retries = 0
             while True:
                 try:
-                    ordinal = ordinal_start + offset if retries == 0 else _next_ordinal(session, workout_id, lock=True)
-                    exercise_id = _resolve_exercise_id(session, data.user_id, exercise)
-                    workout_exercise = WorkoutExercise(
-                        workout_id=workout_id,
-                        exercise_id=exercise_id,
-                        ordinal=ordinal,
-                        notes=exercise.notes,
-                    )
-                    session.add(workout_exercise)
-                    session.flush()
-                    written_workout_exercises += 1
-
-                    for set_index, set_data in enumerate(exercise.sets):
-                        weight_kg, weight_original_value, weight_original_unit = set_data.weight_values()
-                        workout_set = WorkoutSet(
-                            workout_exercise_id=workout_exercise.id,
-                            set_index=set_index,
-                            reps=set_data.reps,
-                            weight_kg=weight_kg,
-                            weight_original_value=weight_original_value,
-                            weight_original_unit=weight_original_unit,
-                            rpe=set_data.rpe,
-                            rir=set_data.rir,
-                            is_warmup=set_data.is_warmup,
-                            tempo=set_data.tempo,
-                            rest_seconds=set_data.rest_seconds,
-                            notes=set_data.notes,
+                    with session.begin_nested():
+                        ordinal = ordinal_start + offset if retries == 0 else _next_ordinal(
+                            session, workout_id, lock=True
                         )
-                        session.add(workout_set)
-                        written_sets += 1
+                        exercise_id = _resolve_exercise_id(session, data.user_id, exercise)
+                        workout_exercise = WorkoutExercise(
+                            workout_id=workout_id,
+                            exercise_id=exercise_id,
+                            ordinal=ordinal,
+                            notes=exercise.notes,
+                        )
+                        session.add(workout_exercise)
+                        session.flush()
+                        written_workout_exercises += 1
+
+                        for set_index, set_data in enumerate(exercise.sets):
+                            weight_kg, weight_original_value, weight_original_unit = set_data.weight_values()
+                            workout_set = WorkoutSet(
+                                workout_exercise_id=workout_exercise.id,
+                                set_index=set_index,
+                                reps=set_data.reps,
+                                weight_kg=weight_kg,
+                                weight_original_value=weight_original_value,
+                                weight_original_unit=weight_original_unit,
+                                rpe=set_data.rpe,
+                                rir=set_data.rir,
+                                is_warmup=set_data.is_warmup,
+                                tempo=set_data.tempo,
+                                rest_seconds=set_data.rest_seconds,
+                                notes=set_data.notes,
+                            )
+                            session.add(workout_set)
+                            written_sets += 1
                     break
-                except IntegrityError as exc:
-                    session.rollback()
+                except IntegrityError:
                     retries += 1
                     if retries > 3:
                         raise
