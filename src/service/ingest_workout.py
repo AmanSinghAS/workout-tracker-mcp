@@ -60,15 +60,13 @@ def _resolve_exercise_id(session: Session, user_id: uuid.UUID, exercise: Exercis
     return new_exercise.id
 
 
-def _next_ordinal(session: Session, workout_id: uuid.UUID, lock: bool = False) -> int:
+def _next_ordinal(session: Session, workout_id: uuid.UUID) -> int:
     query = (
         select(WorkoutExercise.ordinal)
         .where(WorkoutExercise.workout_id == workout_id)
         .order_by(WorkoutExercise.ordinal.desc())
         .limit(1)
     )
-    if lock:
-        query = query.with_for_update()
     current_max = session.execute(query).scalar_one_or_none()
     return (current_max or -1) + 1
 
@@ -132,6 +130,9 @@ def ingest_workout(session: Session, payload: Dict | WorkoutIngestPayload) -> Di
             appended_to_existing = True
             if data.idempotency_key and existing_workout.idempotency_key is None:
                 existing_workout.idempotency_key = data.idempotency_key
+            session.execute(
+                select(Workout.id).where(Workout.id == workout_id).with_for_update()
+            ).scalar_one()
         else:
             insert_stmt = (
                 pg_insert(Workout)
@@ -143,6 +144,9 @@ def ingest_workout(session: Session, payload: Dict | WorkoutIngestPayload) -> Di
             if inserted_row:
                 workout_id = inserted_row.id
                 appended_to_existing = False
+                session.execute(
+                    select(Workout.id).where(Workout.id == workout_id).with_for_update()
+                ).scalar_one()
             else:
                 existing_workout = session.execute(
                     select(Workout).where(
@@ -154,8 +158,11 @@ def ingest_workout(session: Session, payload: Dict | WorkoutIngestPayload) -> Di
                 appended_to_existing = True
                 if data.idempotency_key and existing_workout.idempotency_key is None:
                     existing_workout.idempotency_key = data.idempotency_key
+                session.execute(
+                    select(Workout.id).where(Workout.id == workout_id).with_for_update()
+                ).scalar_one()
 
-        ordinal_start = _next_ordinal(session, workout_id, lock=True)
+        ordinal_start = _next_ordinal(session, workout_id)
 
         for offset, exercise in enumerate(data.exercises):
             ordinal = ordinal_start + offset
