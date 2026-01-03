@@ -61,7 +61,12 @@ def _resolve_exercise_id(session: Session, user_id: uuid.UUID, exercise: Exercis
 
 
 def _next_ordinal(session: Session, workout_id: uuid.UUID, lock: bool = False) -> int:
-    query = select(func.max(WorkoutExercise.ordinal)).where(WorkoutExercise.workout_id == workout_id)
+    query = (
+        select(WorkoutExercise.ordinal)
+        .where(WorkoutExercise.workout_id == workout_id)
+        .order_by(WorkoutExercise.ordinal.desc())
+        .limit(1)
+    )
     if lock:
         query = query.with_for_update()
     current_max = session.execute(query).scalar_one_or_none()
