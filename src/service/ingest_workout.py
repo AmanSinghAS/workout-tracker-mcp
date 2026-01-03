@@ -128,17 +128,28 @@ def ingest_workout(session: Session, payload: Dict | WorkoutIngestPayload) -> Di
                 existing_workout.idempotency_key = data.idempotency_key
             ordinal_start = _next_ordinal(session, workout_id)
         else:
-            insert_stmt = pg_insert(Workout).values(**workout_data).returning(
-                Workout.id, literal_column("xmax = 0").label("inserted")
+            insert_stmt = (
+                pg_insert(Workout)
+                .values(**workout_data)
+                .on_conflict_do_nothing(index_elements=[Workout.user_id, Workout.workout_date])
+                .returning(Workout.id)
             )
-            result = session.execute(insert_stmt).one()
-            workout_id = result.id
-            appended_to_existing = not result.inserted
-            ordinal_start = 0
-            if appended_to_existing:
-                # A concurrent insert for the same day happened. Grab the persisted row.
-                existing_workout = session.get(Workout, workout_id)
-                if data.idempotency_key and existing_workout and existing_workout.idempotency_key is None:
+            inserted_row = session.execute(insert_stmt).first()
+            if inserted_row:
+                workout_id = inserted_row.id
+                appended_to_existing = False
+                ordinal_start = 0
+            else:
+                existing_workout = session.execute(
+                    select(Workout).where(
+                        Workout.user_id == data.user_id,
+                        Workout.workout_date == workout_date,
+                    )
+                ).scalar_one()
+                workout_id = existing_workout.id
+                appended_to_existing = True
+                ordinal_start = _next_ordinal(session, workout_id)
+                if data.idempotency_key and existing_workout.idempotency_key is None:
                     existing_workout.idempotency_key = data.idempotency_key
 
         for offset, exercise in enumerate(data.exercises):
