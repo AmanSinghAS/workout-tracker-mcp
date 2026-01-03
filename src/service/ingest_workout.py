@@ -165,16 +165,14 @@ def ingest_workout(session: Session, payload: Dict | WorkoutIngestPayload) -> Di
                     select(Workout.id).where(Workout.id == workout_id).with_for_update()
                 ).scalar_one()
 
-        ordinal_start = _next_ordinal(session, workout_id, lock=True)
+        next_ordinal = _next_ordinal(session, workout_id, lock=True)
 
-        for offset, exercise in enumerate(data.exercises):
+        for exercise in data.exercises:
             retries = 0
             while True:
                 try:
                     with session.begin_nested():
-                        ordinal = ordinal_start + offset if retries == 0 else _next_ordinal(
-                            session, workout_id, lock=True
-                        )
+                        ordinal = next_ordinal if retries == 0 else _next_ordinal(session, workout_id, lock=True)
                         exercise_id = _resolve_exercise_id(session, data.user_id, exercise)
                         workout_exercise = WorkoutExercise(
                             workout_id=workout_id,
@@ -204,6 +202,7 @@ def ingest_workout(session: Session, payload: Dict | WorkoutIngestPayload) -> Di
                             )
                             session.add(workout_set)
                             written_sets += 1
+                        next_ordinal = ordinal + 1
                     break
                 except IntegrityError:
                     retries += 1
