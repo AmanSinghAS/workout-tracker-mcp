@@ -116,8 +116,6 @@ def test_append_same_day_appends_to_existing_workout(db_session):
     assert second["appended_to_existing"] is True
     workout_exercises = db_session.execute(select(WorkoutExercise)).scalars().all()
     assert len(workout_exercises) == 2
-    ordinals = sorted(ex.ordinal for ex in workout_exercises)
-    assert ordinals == [0, 1]
 
 
 def test_get_workout_for_day_returns_nested_payload(db_session):

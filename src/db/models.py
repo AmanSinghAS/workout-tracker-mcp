@@ -100,10 +100,6 @@ class Exercise(Base):
 
 class WorkoutExercise(Base):
     __tablename__ = "workout_exercise"
-    __table_args__ = (
-        UniqueConstraint("workout_id", "ordinal", name="uq_workout_exercise_ordinal"),
-        Index("ix_workout_exercise_workout_ordinal", "workout_id", "ordinal"),
-    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
@@ -114,7 +110,6 @@ class WorkoutExercise(Base):
     exercise_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("exercise.id"), nullable=False
     )
-    ordinal: Mapped[int] = mapped_column(SmallInteger, nullable=False)
     notes: Mapped[str | None] = mapped_column(Text)
 
     workout: Mapped[Workout] = relationship("Workout", back_populates="exercises")

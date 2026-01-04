@@ -4,8 +4,7 @@ import uuid
 from datetime import date, timezone
 from typing import Dict
 
-from sqlalchemy import func, literal_column, select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session, selectinload
 
@@ -59,19 +58,6 @@ def _resolve_exercise_id(session: Session, user_id: uuid.UUID, exercise: Exercis
     session.add(new_exercise)
     session.flush()
     return new_exercise.id
-
-
-def _next_ordinal(session: Session, workout_id: uuid.UUID, lock: bool = False) -> int:
-    query = (
-        select(WorkoutExercise.ordinal)
-        .where(WorkoutExercise.workout_id == workout_id)
-        .order_by(WorkoutExercise.ordinal.desc())
-        .limit(1)
-    )
-    if lock:
-        query = query.with_for_update()
-    current_max = session.execute(query).scalar_one_or_none()
-    return (current_max or -1) + 1
 
 
 def _workout_date_from_started(started_at) -> date:
@@ -166,46 +152,34 @@ def ingest_workout(session: Session, payload: Dict | WorkoutIngestPayload) -> Di
                 ).scalar_one()
 
         for exercise in data.exercises:
-            retries = 0
-            while True:
-                try:
-                    with session.begin_nested():
-                        ordinal = _next_ordinal(session, workout_id, lock=True)
-                        exercise_id = _resolve_exercise_id(session, data.user_id, exercise)
-                        workout_exercise = WorkoutExercise(
-                            workout_id=workout_id,
-                            exercise_id=exercise_id,
-                            ordinal=ordinal,
-                            notes=exercise.notes,
-                        )
-                        session.add(workout_exercise)
-                        session.flush()
-                        written_workout_exercises += 1
+            exercise_id = _resolve_exercise_id(session, data.user_id, exercise)
+            workout_exercise = WorkoutExercise(
+                workout_id=workout_id,
+                exercise_id=exercise_id,
+                notes=exercise.notes,
+            )
+            session.add(workout_exercise)
+            session.flush()
+            written_workout_exercises += 1
 
-                        for set_index, set_data in enumerate(exercise.sets):
-                            weight_kg, weight_original_value, weight_original_unit = set_data.weight_values()
-                            workout_set = WorkoutSet(
-                                workout_exercise_id=workout_exercise.id,
-                                set_index=set_index,
-                                reps=set_data.reps,
-                                weight_kg=weight_kg,
-                                weight_original_value=weight_original_value,
-                                weight_original_unit=weight_original_unit,
-                                rpe=set_data.rpe,
-                                rir=set_data.rir,
-                                is_warmup=set_data.is_warmup,
-                                tempo=set_data.tempo,
-                                rest_seconds=set_data.rest_seconds,
-                                notes=set_data.notes,
-                            )
-                            session.add(workout_set)
-                            written_sets += 1
-                    break
-                except IntegrityError:
-                    retries += 1
-                    if retries > 3:
-                        raise
-                    continue
+            for set_index, set_data in enumerate(exercise.sets):
+                weight_kg, weight_original_value, weight_original_unit = set_data.weight_values()
+                workout_set = WorkoutSet(
+                    workout_exercise_id=workout_exercise.id,
+                    set_index=set_index,
+                    reps=set_data.reps,
+                    weight_kg=weight_kg,
+                    weight_original_value=weight_original_value,
+                    weight_original_unit=weight_original_unit,
+                    rpe=set_data.rpe,
+                    rir=set_data.rir,
+                    is_warmup=set_data.is_warmup,
+                    tempo=set_data.tempo,
+                    rest_seconds=set_data.rest_seconds,
+                    notes=set_data.notes,
+                )
+                session.add(workout_set)
+                written_sets += 1
 
     return {
         "workout_id": str(workout_id),
@@ -250,14 +224,13 @@ def get_workout_for_day(
             return {"workout": None}
 
         exercises = []
-        for ex in sorted(workout.exercises, key=lambda e: e.ordinal):
+        for ex in workout.exercises:
             exercise_info = {
                 "workout_exercise_id": str(ex.id),
                 "exercise_id": str(ex.exercise_id),
                 "display_name": ex.exercise.display_name if ex.exercise else None,
                 "canonical_name": ex.exercise.canonical_name if ex.exercise else None,
                 "notes": ex.notes,
-                "ordinal": ex.ordinal,
                 "sets": [],
             }
             for ws in sorted(ex.sets, key=lambda s: s.set_index):
