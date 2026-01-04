@@ -5,7 +5,7 @@ import sys
 import pytest
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session
 
 PROJECT_ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -27,6 +27,8 @@ def database_url():
 def engine(database_url):
     engine = create_engine(database_url, future=True)
     Base.metadata.drop_all(bind=engine)
+    with engine.begin() as connection:
+        connection.execute(text("DROP TABLE IF EXISTS alembic_version"))
 
     alembic_cfg = Config(str(pathlib.Path(__file__).resolve().parent.parent / "alembic.ini"))
     alembic_cfg.set_main_option("sqlalchemy.url", database_url)

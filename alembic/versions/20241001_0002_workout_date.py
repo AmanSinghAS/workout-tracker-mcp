@@ -1,0 +1,45 @@
+"""add workout_date and per-day uniqueness
+
+Revision ID: 20241001_0002
+Revises: 20240915_0001
+Create Date: 2024-10-01 00:00:00.000000
+"""
+
+from __future__ import annotations
+
+import sqlalchemy as sa
+from alembic import op
+
+# revision identifiers, used by Alembic.
+revision = "20241001_0002"
+down_revision = "20240915_0001"
+branch_labels = None
+depends_on = None
+
+
+def upgrade() -> None:
+    # Add nullable column first so we can backfill
+    op.add_column("workout", sa.Column("workout_date", sa.Date(), nullable=True))
+
+    workout = sa.table(
+        "workout",
+        sa.column("id", sa.dialects.postgresql.UUID(as_uuid=True)),
+        sa.column("started_at", sa.DateTime(timezone=True)),
+        sa.column("workout_date", sa.Date()),
+    )
+    # Backfill using the UTC date of started_at to avoid nulls
+    op.execute(workout.update().values(workout_date=sa.func.date(workout.c.started_at)))
+
+    with op.batch_alter_table("workout") as batch:
+        batch.alter_column("workout_date", nullable=False)
+        batch.create_unique_constraint(
+            "uq_workout_user_day", ["user_id", "workout_date"]
+        )
+        batch.create_index("ix_workout_user_date", ["user_id", "workout_date"])
+
+
+def downgrade() -> None:
+    with op.batch_alter_table("workout") as batch:
+        batch.drop_index("ix_workout_user_date")
+        batch.drop_constraint("uq_workout_user_day", type_="unique")
+        batch.drop_column("workout_date")

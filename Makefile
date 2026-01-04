@@ -7,7 +7,7 @@ POSTGRES_DB ?= workout_tracker
 DATABASE_URL ?= postgresql+psycopg://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@localhost:5432/$(POSTGRES_DB)
 IMAGE ?= workout-tracker-mcp:local
 
-.PHONY: up down logs status db-up db-down db-wait test docker-build ci
+.PHONY: up down logs status db-up db-down db-wait test test-only services-up services-down docker-build ci
 
 up:
 	$(COMPOSE) up -d
@@ -32,6 +32,13 @@ db-wait:
 
 test: db-up db-wait
 	DATABASE_URL=$(DATABASE_URL) pytest
+
+test-only:
+	DATABASE_URL=$(DATABASE_URL) pytest
+
+services-up: db-up
+
+services-down: db-down
 
 docker-build:
 	$(DOCKER) build -t $(IMAGE) .
