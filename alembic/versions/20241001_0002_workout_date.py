@@ -30,6 +30,61 @@ def upgrade() -> None:
     # Backfill using the UTC date of started_at to avoid nulls
     op.execute(workout.update().values(workout_date=sa.func.date(workout.c.started_at)))
 
+    # De-duplicate any existing per-day workouts by keeping the earliest per user/day
+    op.execute(
+        sa.text(
+            """
+            WITH ranked AS (
+                SELECT
+                    id,
+                    user_id,
+                    workout_date,
+                    started_at,
+                    idempotency_key,
+                    row_number() OVER (
+                        PARTITION BY user_id, workout_date
+                        ORDER BY (idempotency_key IS NOT NULL) DESC, started_at, id
+                    ) AS rn,
+                    first_value(id) OVER (
+                        PARTITION BY user_id, workout_date
+                        ORDER BY (idempotency_key IS NOT NULL) DESC, started_at, id
+                    ) AS keep_id
+                FROM workout
+            )
+            UPDATE workout_exercise AS we
+            SET workout_id = r.keep_id
+            FROM ranked r
+            WHERE we.workout_id = r.id
+              AND r.rn > 1
+              AND we.workout_id <> r.keep_id;
+            """
+        )
+    )
+
+    op.execute(
+        sa.text(
+            """
+            WITH ranked AS (
+                SELECT
+                    id,
+                    user_id,
+                    workout_date,
+                    started_at,
+                    idempotency_key,
+                    row_number() OVER (
+                        PARTITION BY user_id, workout_date
+                        ORDER BY (idempotency_key IS NOT NULL) DESC, started_at, id
+                    ) AS rn
+                FROM workout
+            )
+            DELETE FROM workout w
+            USING ranked r
+            WHERE w.id = r.id
+              AND r.rn > 1;
+            """
+        )
+    )
+
     with op.batch_alter_table("workout") as batch:
         batch.alter_column("workout_date", nullable=False)
         batch.create_unique_constraint(
