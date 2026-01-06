@@ -5,7 +5,7 @@ import pytest
 from sqlalchemy import func, select
 
 from src.db.models import Exercise, Workout, WorkoutExercise, WorkoutSet
-from src.service.ingest_workout import ingest_workout
+from src.service.ingest_workout import get_workout_for_day, ingest_workout
 
 
 def build_payload(user_id: uuid.UUID | None = None, idempotency_key: str | None = None):
@@ -100,3 +100,34 @@ def test_exercise_upsert_reuses_existing(db_session):
     workout_exercises = db_session.execute(select(WorkoutExercise)).scalars().all()
     assert len(workout_exercises) == 2
     assert workout_exercises[0].exercise_id == workout_exercises[1].exercise_id
+
+
+def test_append_same_day_appends_to_existing_workout(db_session):
+    user_id = uuid.uuid4()
+    payload_one = build_payload(user_id=user_id, idempotency_key="one")
+    payload_two = build_payload(user_id=user_id, idempotency_key="two")
+    payload_one["workout"]["started_at"] = "2024-09-05T10:00:00Z"
+    payload_two["workout"]["started_at"] = "2024-09-05T12:00:00Z"
+
+    first = ingest_workout(db_session, payload_one)
+    second = ingest_workout(db_session, payload_two)
+
+    assert first["workout_id"] == second["workout_id"]
+    assert second["appended_to_existing"] is True
+    workout_exercises = db_session.execute(select(WorkoutExercise)).scalars().all()
+    assert len(workout_exercises) == 2
+
+
+def test_get_workout_for_day_returns_nested_payload(db_session):
+    user_id = uuid.uuid4()
+    payload = build_payload(user_id=user_id)
+    ingest_workout(db_session, payload)
+
+    workout_date = payload["workout"]["started_at"][:10]
+    result = get_workout_for_day(db_session, {"user_id": str(user_id), "workout_date": workout_date})
+
+    workout = result["workout"]
+    assert workout is not None
+    assert workout["workout_date"] == workout_date
+    assert len(workout["exercises"]) == 1
+    assert len(workout["exercises"][0]["sets"]) == 2

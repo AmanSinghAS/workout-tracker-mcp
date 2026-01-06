@@ -1,14 +1,20 @@
 from __future__ import annotations
 
 import uuid
+from datetime import date, timezone
 from typing import Dict
 
-from sqlalchemy import literal_column, select
+from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from src.db.models import AppUser, Exercise, Workout, WorkoutExercise, WorkoutSet
-from src.domain.payloads import ExerciseInput, WorkoutIngestPayload, validate_payload
+from src.domain.payloads import (
+    ExerciseInput,
+    WorkoutByDateRequest,
+    WorkoutIngestPayload,
+    validate_payload,
+)
 
 
 def _ensure_user(session: Session, user_id: uuid.UUID) -> AppUser:
@@ -54,6 +60,10 @@ def _resolve_exercise_id(session: Session, user_id: uuid.UUID, exercise: Exercis
     return new_exercise.id
 
 
+def _workout_date_from_started(started_at) -> date:
+    return started_at.astimezone(timezone.utc).date()
+
+
 def ingest_workout(session: Session, payload: Dict | WorkoutIngestPayload) -> Dict:
     if isinstance(payload, WorkoutIngestPayload):
         data = payload
@@ -66,9 +76,27 @@ def ingest_workout(session: Session, payload: Dict | WorkoutIngestPayload) -> Di
     with session.begin():
         _ensure_user(session, data.user_id)
 
+        workout_date = _workout_date_from_started(data.workout.started_at)
+
+        if data.idempotency_key:
+            idempotent_match = session.execute(
+                select(Workout.id).where(
+                    Workout.user_id == data.user_id, Workout.idempotency_key == data.idempotency_key
+                )
+            ).scalar_one_or_none()
+            if idempotent_match:
+                return {
+                    "workout_id": str(idempotent_match),
+                    "written_workout_exercises": 0,
+                    "written_sets": 0,
+                    "idempotent_replay": True,
+                    "appended_to_existing": False,
+                }
+
         workout_data = {
             "id": uuid.uuid4(),
             "user_id": data.user_id,
+            "workout_date": workout_date,
             "started_at": data.workout.started_at,
             "ended_at": data.workout.ended_at,
             "timezone": data.workout.timezone,
@@ -78,39 +106,56 @@ def ingest_workout(session: Session, payload: Dict | WorkoutIngestPayload) -> Di
             "idempotency_key": data.idempotency_key,
         }
 
-        idempotent_replay = False
-        if data.idempotency_key:
-            insert_stmt = pg_insert(Workout).values(**workout_data)
-            upsert_stmt = (
-                insert_stmt.on_conflict_do_update(
-                    index_elements=[Workout.user_id, Workout.idempotency_key],
-                    set_={"idempotency_key": insert_stmt.excluded.idempotency_key},
-                )
-                .returning(Workout.id, literal_column("xmax = 0").label("inserted"))
+        existing_workout = session.execute(
+            select(Workout).where(
+                Workout.user_id == data.user_id,
+                Workout.workout_date == workout_date,
             )
-            result = session.execute(upsert_stmt).one()
-            workout_id = result.id
-            inserted = result.inserted
-            if not inserted:
-                idempotent_replay = True
+        ).scalar_one_or_none()
+
+        appended_to_existing = False
+        if existing_workout:
+            workout_id = existing_workout.id
+            appended_to_existing = True
+            if data.idempotency_key and existing_workout.idempotency_key is None:
+                existing_workout.idempotency_key = data.idempotency_key
+            session.execute(
+                select(Workout.id).where(Workout.id == workout_id).with_for_update()
+            ).scalar_one()
         else:
-            insert_stmt = pg_insert(Workout).values(**workout_data).returning(Workout.id)
-            workout_id = session.execute(insert_stmt).scalar_one()
+            insert_stmt = (
+                pg_insert(Workout)
+                .values(**workout_data)
+                .on_conflict_do_nothing(index_elements=[Workout.user_id, Workout.workout_date])
+                .returning(Workout.id)
+            )
+            inserted_row = session.execute(insert_stmt).first()
+            if inserted_row:
+                workout_id = inserted_row.id
+                appended_to_existing = False
+                session.execute(
+                    select(Workout.id).where(Workout.id == workout_id).with_for_update()
+                ).scalar_one()
+            else:
+                existing_workout = session.execute(
+                    select(Workout).where(
+                        Workout.user_id == data.user_id,
+                        Workout.workout_date == workout_date,
+                    )
+                ).scalar_one()
+                workout_id = existing_workout.id
+                appended_to_existing = True
+                if data.idempotency_key and existing_workout.idempotency_key is None:
+                    existing_workout.idempotency_key = data.idempotency_key
+                session.execute(
+                    select(Workout.id).where(Workout.id == workout_id).with_for_update()
+                ).scalar_one()
 
-        if idempotent_replay:
-            return {
-                "workout_id": str(workout_id),
-                "written_workout_exercises": 0,
-                "written_sets": 0,
-                "idempotent_replay": True,
-            }
-
-        for ordinal, exercise in enumerate(data.exercises):
+        for exercise in data.exercises:
             exercise_id = _resolve_exercise_id(session, data.user_id, exercise)
             workout_exercise = WorkoutExercise(
                 workout_id=workout_id,
                 exercise_id=exercise_id,
-                ordinal=ordinal,
                 notes=exercise.notes,
             )
             session.add(workout_exercise)
@@ -141,4 +186,84 @@ def ingest_workout(session: Session, payload: Dict | WorkoutIngestPayload) -> Di
         "written_workout_exercises": written_workout_exercises,
         "written_sets": written_sets,
         "idempotent_replay": False,
+        "appended_to_existing": appended_to_existing,
     }
+
+
+def get_workout_for_day(
+    session: Session, payload: Dict | WorkoutByDateRequest
+) -> Dict:
+    if isinstance(payload, WorkoutByDateRequest):
+        request = payload
+    else:
+        request = WorkoutByDateRequest.model_validate(payload)
+
+    workout_date = request.workout_date
+
+    with session.begin():
+        workout = (
+            session.execute(
+                select(Workout)
+                .where(
+                    Workout.user_id == request.user_id,
+                    Workout.workout_date == workout_date,
+                )
+                .options(
+                    selectinload(Workout.exercises)
+                    .options(
+                        selectinload(WorkoutExercise.exercise),
+                        selectinload(WorkoutExercise.sets),
+                    )
+                )
+            )
+            .scalars()
+            .first()
+        )
+
+        if not workout:
+            return {"workout": None}
+
+        exercises = []
+        for ex in workout.exercises:
+            exercise_info = {
+                "workout_exercise_id": str(ex.id),
+                "exercise_id": str(ex.exercise_id),
+                "display_name": ex.exercise.display_name if ex.exercise else None,
+                "canonical_name": ex.exercise.canonical_name if ex.exercise else None,
+                "notes": ex.notes,
+                "sets": [],
+            }
+            for ws in sorted(ex.sets, key=lambda s: s.set_index):
+                exercise_info["sets"].append(
+                    {
+                        "workout_set_id": str(ws.id),
+                        "set_index": ws.set_index,
+                        "reps": ws.reps,
+                        "weight_kg": ws.weight_kg,
+                        "weight_original_value": ws.weight_original_value,
+                        "weight_original_unit": ws.weight_original_unit,
+                        "rpe": ws.rpe,
+                        "rir": ws.rir,
+                        "is_warmup": ws.is_warmup,
+                        "tempo": ws.tempo,
+                        "rest_seconds": ws.rest_seconds,
+                        "notes": ws.notes,
+                        "logged_at": ws.logged_at.isoformat() if ws.logged_at else None,
+                    }
+                )
+            exercises.append(exercise_info)
+
+        return {
+            "workout": {
+                "workout_id": str(workout.id),
+                "user_id": str(workout.user_id),
+                "workout_date": workout.workout_date.isoformat(),
+                "started_at": workout.started_at.isoformat() if workout.started_at else None,
+                "ended_at": workout.ended_at.isoformat() if workout.ended_at else None,
+                "timezone": workout.timezone,
+                "title": workout.title,
+                "source": workout.source,
+                "notes": workout.notes,
+                "exercises": exercises,
+            }
+        }

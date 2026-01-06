@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Annotated, List, Optional
 
 from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
@@ -162,3 +162,10 @@ def validate_payload(payload: dict) -> WorkoutIngestPayload:
 def workout_payload_schema() -> dict:
     """Return the JSON schema for the workout ingestion payload."""
     return WorkoutIngestPayload.model_json_schema()
+
+
+class WorkoutByDateRequest(BaseModel):
+    user_id: uuid.UUID
+    workout_date: date
+
+    model_config = {"extra": "forbid"}

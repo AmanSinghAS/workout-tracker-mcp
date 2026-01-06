@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
-    Column,
+    Date,
     DateTime,
     ForeignKey,
     Index,
@@ -41,7 +41,9 @@ class Workout(Base):
     __tablename__ = "workout"
     __table_args__ = (
         UniqueConstraint("user_id", "idempotency_key", name="uq_workout_user_idempotency"),
+        UniqueConstraint("user_id", "workout_date", name="uq_workout_user_day"),
         Index("ix_workout_user_started_at_desc", "user_id", desc("started_at")),
+        Index("ix_workout_user_date", "user_id", "workout_date"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -52,6 +54,7 @@ class Workout(Base):
     )
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    workout_date: Mapped[date] = mapped_column(Date, nullable=False)
     timezone: Mapped[str | None] = mapped_column(Text)
     title: Mapped[str | None] = mapped_column(Text)
     source: Mapped[str | None] = mapped_column(Text)
@@ -97,10 +100,6 @@ class Exercise(Base):
 
 class WorkoutExercise(Base):
     __tablename__ = "workout_exercise"
-    __table_args__ = (
-        UniqueConstraint("workout_id", "ordinal", name="uq_workout_exercise_ordinal"),
-        Index("ix_workout_exercise_workout_ordinal", "workout_id", "ordinal"),
-    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
@@ -111,7 +110,6 @@ class WorkoutExercise(Base):
     exercise_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("exercise.id"), nullable=False
     )
-    ordinal: Mapped[int] = mapped_column(SmallInteger, nullable=False)
     notes: Mapped[str | None] = mapped_column(Text)
 
     workout: Mapped[Workout] = relationship("Workout", back_populates="exercises")

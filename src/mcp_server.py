@@ -28,8 +28,8 @@ from mcp.shared.auth import OAuthClientInformationFull, OAuthClientMetadata, OAu
 from mcp.server.fastmcp import FastMCP
 
 from src.db.session import engine
-from src.domain.payloads import WorkoutIngestPayload
-from src.service.ingest_workout import ingest_workout
+from src.domain.payloads import WorkoutByDateRequest, WorkoutIngestPayload
+from src.service.ingest_workout import get_workout_for_day, ingest_workout
 
 HOST = os.getenv("HOST", "0.0.0.0")
 PORT = int(os.getenv("PORT", "8000"))
@@ -293,6 +293,10 @@ def handle_add_workout_entry(
     return ingest_workout(session, payload)
 
 
+def handle_get_workout_for_day(payload: WorkoutByDateRequest | dict, session: Session) -> dict:
+    return get_workout_for_day(session, payload)
+
+
 @mcp.tool(name="add_workout_entry")
 def add_workout_entry(payload: WorkoutIngestPayload) -> dict:
     """Validate and persist a workout entry payload."""
@@ -308,3 +312,20 @@ def add_workout_entry(payload: WorkoutIngestPayload) -> dict:
     except Exception as exc:
         detail = str(exc) or repr(exc)
         raise ValueError(f"Unexpected error while ingesting workout entry: {detail}") from exc
+
+
+@mcp.tool(name="get_workout_for_day")
+def get_workout_for_day_tool(payload: WorkoutByDateRequest) -> dict:
+    """Fetch the workout (with exercises and sets) for a given user and calendar date."""
+    try:
+        with Session(engine) as session:
+            return handle_get_workout_for_day(payload, session)
+    except ValueError as exc:
+        detail = str(exc) or repr(exc)
+        raise ValueError(f"Invalid request: {detail}") from exc
+    except SQLAlchemyError as exc:
+        detail = str(exc) or repr(exc)
+        raise ValueError(f"Database error while fetching workout: {detail}") from exc
+    except Exception as exc:
+        detail = str(exc) or repr(exc)
+        raise ValueError(f"Unexpected error while fetching workout: {detail}") from exc
